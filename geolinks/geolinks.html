@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+body { background: rgb(75, 75, 75); }
+body.waiting * {
+    cursor: progress;
+}
+path { stroke: white; stroke-width: 1; fill:slategray}
+path:hover { stroke-width: 3; }
+.d3-tip{
+    margin: -10px;
+    font-size: 12px;
+    padding: 8px;
+    position: absolute;
+    font-family: sans-serif;
+    background: peru;
+    color: white;
+    border-radius: 200px;
+    font-weight: normal;
+}
+div{
+    color:white;
+    font-family:sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+    float:left
+}
+svg{
+    position:absolute;
+    float:right
+}
+.title{
+    font-size:xx-large;
+    font-weight:bold;
+    font-family:sans-serif
+}
+.subtitle{
+    font-size:small;
+    font-weight:normal;
+    font-family:sans-serif
+}
+.credits{
+    font-size:xx-small;
+    font-weight:normal
+}
+</style>
+<body>
+        <div id="option">
+                <br>
+                <span class="title">CharIOT.<br></span>
+                <span class="subtitle">(Charity Integration and Opportunity Tool.)<br><br></span>
+                <input id="instruct" 
+                       type="button" 
+                       value="Instructions pop-up" 
+                       onclick="alert('1. Click and drag areas of interest, then double-click to exit.\n2. Click \'Show me the money!\'\n3. Pan and zoom around the map; play with the menu on the left.')" 
+                       autocomplete="off"/>
+                <br><br>
+                Add/delete hard-to-find ZIP codes<br>
+                <input type="text" 
+                    id="activate_zip" 
+                    value="Enter ZIP code" 
+                    onclick=clear_text(this.value)
+                    onkeyup="check_active_zips(this.value)" 
+                    autocomplete="off">
+                <input type="submit" 
+                    id="activate_zip_submit" 
+                    value="Add ZIP" 
+                    onclick="activate_zip()">
+                <br><br>
+                Direction of flow<br>
+                <select onchange="flip_flow(this.value)" id="flip_flow" selected="OUT" disabled autocomplete="off">
+                    <option value="OUT">Coming from these ZIP codes</option>
+                    <option value="IN">Going to these ZIP codes</option>
+                    </select>
+                <br><br>
+                Filter financial flows by category<br>
+                <select onchange="filter_flow_group(this.value)" id="cat_filter" selected="all" disabled autocomplete="off">
+                    <option value="all">All charity types</option>
+                    <option value="arts">Arts</option>
+                    <option value="christian">Christian</option>
+                    <option value="education">Education</option>
+                    <option value="health">Health</option>
+                    <option value="housing">Housing</option>
+                    <option value="school">School</option>
+                    <option value="youth">Youth</option>
+                </select>
+                <br><br>
+                Filter by year<br>
+                <select onchange="filter_flow_year(this.value)" id="year_filter" selected="all" disabled autocomplete="off">
+                        <option value=2016>2016</option>
+                        <option value=2015>2015</option>
+                        <option value=2014>2014</option>
+                        <option value=2013>2013</option>
+                        <option value=2012>2012</option>
+                        <option value=2011>2011</option>
+                    </select>
+                <br><br>
+                View<br>
+                <input type="radio" name="view" value="map" onchange="setView(this.value)" id="radio1" disabled checked autocomplete="off">Map<br>
+                <input type="radio" name="view" value="graph" onchange="setView(this.value)" id="radio2" disabled autocomplete="off">Graph<br><br>
+                Node color scheme (graph view only)<br>
+                <input type="radio" name="graph_color" value="clusters" onchange="setGraphColor(this.value)" id="radio3" disabled checked autocomplete="off">Economic activity<br>
+                <input type="radio" name="graph_color" value="flows" onchange="setGraphColor(this.value)" id="radio4" disabled autocomplete="off">Net grants<br><br>
+                <input id="show_money" 
+                       type="button" 
+                       disabled="disabled"
+                       value="Show me the money!" 
+                       onclick="updateData(x)" 
+                       autocomplete="off"/>
+                <br><br>
+                Donor habits view (map only)<br>
+                <input type="radio" name="show_predict" value="false" onchange="setPredict(this.value)" id="show_predict1" disabled checked autocomplete="off">Real values<br>
+                <input type="radio" name="show_predict" value="true" onchange="setPredict(this.value)" id="show_predict2" disabled autocomplete="off">Most common grant pairs (all subgroups)<br><br>
+                <br><br>
+                <span class="credits">
+                    <strong><br>Daniel Sexton, Wei Cai, Bradley May, and Devin Cavagnaro.</strong><br>
+                    <strong>Federal Reserve Bank of Atlanta<br>Georgia Institute of Technology, CSE6242.</strong><br>
+                    <br>&bull;ZIP code shapefile: jefffriesen <br>(https://gist.github.com/jefffriesen/6892860).<br>
+                    <br>&bull;State shapefile: Chris Given <br>(https://bl.ocks.org/cmgiven/d39ec773c4f063a463137748097ff52f).<br>
+                    <br>&bull;Many thanks to the innumerable contributors <br> to bl.ocks.org, in particular Mike Bostock,<br> as well as colorbrewer.org.
+                 </span>
+            </div>
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<script src="https://d3js.org/topojson.v1.min.js"></script>
+<script src="d3-tip.min.js"></script>
+<script>
+var state_names={"2":"AK","1":"AL","5":"AR","60":"AS","4":"AZ","6":"CA","8":"CO",
+"9":"CT","11":"DC","10":"DE","12":"FL","13":"GA","66":"GU","15":"HI","19":"IA","16":"ID",
+"17":"IL","18":"IN","20":"KS","21":"KY","22":"LA","25":"MA","24":"MD","23":"ME","26":"MI",
+"27":"MN","29":"MO","28":"MS","30":"MT","37":"NC","38":"ND","31":"NE","33":"NH","34":"NJ","35":"NM",
+"32":"NV","36":"NY","39":"OH","40":"OK","41":"OR","42":"PA","72":"PR","44":"RI","45":"SC","46":"SD","47":"TN","48":"TX","49":"UT",
+"51":"VA","78":"VI","50":"VT","53":"WA","55":"WI","54":"WV","56":"WY","NA":"P. O. Box/Other "}
+var width = 960*1.2
+var height = 600*1.2
+var padding = 0
+var zoomed = false;
+
+var tt = d3.tip()
+    .attr('class', 'd3-tip')
+    .html(function(d){
+        return d.properties.zip+"<br>("+d.properties.name
+            .toLowerCase()
+            .split(' ')
+            .map(function(f){
+                return f.charAt(0).toUpperCase()+f.slice(1);
+            })
+            .join(' ')+")";
+        });
+var tt_money = d3.tip()
+    .attr('class', 'd3-tip')
+    .html(function(d){
+        if (PREDICT){
+            dollar_string=(d.properties.grant_sum_out/x.length).toFixed(2)
+            if (dollar_string=="0.00"){
+                dollar_string="less than $0.01"
+            }
+            else{
+                dollar_string="$"+dollar_string.toString()
+            }
+            return d.properties.zip+"<br>("+d.properties.name
+                .toLowerCase()
+                .split(' ')
+                .map(function(f){
+                    return f.charAt(0).toUpperCase()+f.slice(1);
+                })
+                .join(' ')+")<br>For every $1 granted to your area, other areas grant an average of "+dollar_string+" here";
+        }
+        else{
+            return d.properties.zip+"<br>("+d.properties.name
+                .toLowerCase()
+                .split(' ')
+                .map(function(f){
+                    return f.charAt(0).toUpperCase()+f.slice(1);
+                })
+                .join(' ')+")<br>"+(DIRECTION=="IN"?format_money(d.properties.grant_sum_in)+" to":format_money(d.properties.grant_sum_out)+" from")+" your selected area";
+            }
+        });
+var tt_money_flow = d3.tip()
+    .attr('class', 'd3-tip')
+    .html(function(d){
+        name=d.name
+            .toLowerCase()
+            .split(' ')
+            .map(function(f){
+                return f.charAt(0).toUpperCase()+f.slice(1);
+            })
+            .join(' ')
+        if (PREDICT){
+            dollar_string=(d.flow_out/x.length).toFixed(2)
+            if (dollar_string=="0.00"){
+                dollar_string="less than $0.01"
+            }
+            else{
+                dollar_string="$"+dollar_string.toString()
+            }
+            return name+"<br>For every $1 granted to your area, other areas grant an average of "+dollar_string+" here"
+        }
+        else{
+            return name.slice(0,-1)+name.slice(-1).toUpperCase()+
+                "<br>"+format_money(d.flow_in||0)+" from your selected area"
+                +"<br>"+format_money(d.flow_out||0)+" to your selected area"
+            }
+        }
+    )
+
+function clear_text(v){
+    if (v=="Enter ZIP code") document.getElementById("activate_zip").value=""
+}
+function activate_zip(){
+    v=document.getElementById("activate_zip").value
+    if (!active_zips.includes(v)){
+        active_zips.push(v) 
+        check_active_zips(v)
+    }
+    else {
+        active_zips.indexOf(v) ? 
+            active_zips.splice(active_zips.indexOf(v), 1) : 
+            null
+    } 
+    if (active_zips.length>0){
+        ready.usZoom();
+    }
+}
+function check_active_zips(v){
+    active_zips.includes(v) ? 
+        document.getElementById("activate_zip_submit").value="Remove ZIP" :
+        document.getElementById("activate_zip_submit").value="Add ZIP" 
+}
+function format_money(str){
+    out="";
+    str=str.toString();
+    for (s=str.length-1;s>=0;s--){
+        if ((str.length-s)%3==0&s!=0){
+            out=','+str[s]+out
+        }
+        else out=str[s]+out
+    }
+    return '$'+out
+}
+function setView(view){
+    if (VIEW==view){
+        return
+    }
+    else{
+        if (view=="graph"){
+            VIEW=view;
+            document.getElementById("show_predict1").disabled=true
+            document.getElementById("show_predict2").disabled=true
+            updateData(DIRECTION=="OUT"?x:y)
+        }
+        else { //view=="map"
+            VIEW=view;
+            document.getElementById("show_predict1").disabled=false
+            document.getElementById("show_predict2").disabled=false
+            updateData(DIRECTION=="OUT"?x:y)
+        }
+    }
+}
+function setGraphColor(c){
+    if (GRAPH_COLOR_SCHEME==c){
+        return
+    }
+    else{
+        if (c=="cluster"){
+            GRAPH_COLOR_SCHEME=c;
+            updateData(DIRECTION=="OUT"?x:y)
+        }
+        else { //c=="flows"
+            GRAPH_COLOR_SCHEME=c;
+            updateData(DIRECTION=="OUT"?x:y)
+        }
+    }
+}
+var color = d3.scaleThreshold()
+    .domain([1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000])
+    .range(['#f7fcb9','#d9f0a3','#addd8e','#78c679','#41ab5d','#238443','#005a32']) //thanks to colorbrewer2.org
+var color_pred=d3.scaleThreshold()
+var projection = d3.geoAlbers()
+    .precision(0)
+    .scale(height * 1.5).translate([width / 2, height / 2])
+var path = d3.geoPath().projection(projection)
+
+var svg = d3.select('body')
+    .append('svg')
+    .attr('width', width)
+    .attr('height', height)
+var g = svg.append('g')
+var node_scale=d3.scaleLog()
+    //.base(10)
+    .domain([10, 1000000000])
+    .range([1, 30]);
+
+promises=[
+    d3.json('us-states.json'),
+    d3.json('zips_us_topo_mod.json'),
+    d3.csv('index_agg_grant_flow.csv', function(d){
+        return {
+            zip_out: d.zip_src,
+            zip_in: d.zip_tgt,
+            grant_sum: +d.CashGrantAmt,
+            year: d.year
+        }
+    }),
+    d3.csv('index_agg_grant_group_flow.csv', function(d){
+        return {
+            zip_out: d.zip_src,
+            zip_in: d.zip_tgt,
+            group: d.CharityGroup,
+            grant_sum: +d.CashGrantAmt,
+            year: d.year
+        }
+    }),
+    d3.csv('zip_cluster.csv', function(d){
+        return {
+            zip: d.zip,
+            cluster: d.cluster
+        }
+    }),
+    d3.csv('synth_2016.csv', function(d){
+        return {
+            zip_out: d.zip_src,
+            zip_in: d.zip_tgt_synth,
+            grant_sum: +d.flow_synth,
+            year:2016
+        }
+    })]
+Promise.all(promises).then(ready);
+
+//Machine-state variables
+var zips_in=[]
+var zips_out=[]
+var x=[] 
+var y=[]
+var zips_global
+var states_global
+var flow_cities_global //to pass all the links from updateData() to tt_money_flow
+var flow_global //gets switched in ready.sum_grants
+var active_cities = [];
+var active_zips = [];
+var DIRECTION="OUT"
+var GROUP="all"
+var YEAR=2016
+var VIEW="map"
+var PREDICT=false
+var GRAPH_COLOR_SCHEME="clusters"
+var all_flows_orig=[]
+var zip_cluster_global;
+
+
+function updateData(v){
+    d3.selectAll('#legend')
+        .remove()
+    if (VIEW=="map"){
+        document.getElementById("flip_flow").disabled = false;
+        document.getElementById('show_predict1').disabled=false;
+        document.getElementById('show_predict2').disabled=false;
+        svg.call(d3.zoom() //needs to be svg.call (not g.call) because it'll be shaky otherwise... thanks to https://stackoverflow.com/questions/10988445/d3-behavior-zoom-jitters-shakes-jumps-and-bounces-when-dragging
+            .scaleExtent([1,10])
+            .on("zoom",function(){
+                g.attr("transform", d3.event.transform)
+                    .attr("cx", document.body.clientWidth / 2)
+                    .attr("cy", document.body.clientHeight / 2)
+        }))
+        svg.selectAll('g') 
+            .remove() 
+        g=svg.append('g')
+        document.body.classList.remove('waiting');
+
+        g.selectAll('.state')
+            .data(states_global)
+            .enter().append('path')
+            .attr('class', 'state')
+            .attr('d', path)
+            .on('click', function (d) {stateZoom(d.id); })
+
+        legend=svg.append('g')
+        if (PREDICT){
+            min_pred=999999999
+            max_pred=0
+            x.forEach(function(zip){
+                min_pred=zip.properties.grant_sum_out<min_pred?zip.properties.grant_sum_out:min_pred
+                max_pred=zip.properties.grant_sum_out>max_pred?zip.properties.grant_sum_out:max_pred
+            })
+            min_pred=min_pred/x.length
+            max_pred=max_pred/x.length
+            color_pred
+                .domain([min_pred,
+                    min_pred+(max_pred-min_pred)*.25,
+                    min_pred+(max_pred-min_pred)*.5,
+                    min_pred+(max_pred-min_pred)*.75,
+                    max_pred]
+                )
+                .range(['#fee5d9','#fcbba1','#fc9272','#fb6a4a','#de2d26']) //thanks to colorbrewer2.org
+            legend.selectAll('rect')
+                .data([min_pred,
+                    min_pred+(max_pred-min_pred)*.25,
+                    min_pred+(max_pred-min_pred)*.5,
+                    min_pred+(max_pred-min_pred)*.75,
+                    max_pred]
+                )
+                .enter()
+                .append("rect")
+                .attr('id','legend')
+                .attr("height",40)
+                .attr("width",40)
+                .attr("x",width-50)
+                .attr("y",function(d,i){{return (height/3)+40*i;}})
+                .style("fill",function(d){return color_pred(d-0.01);})
+                .style("stroke",'white')
+            legend.selectAll('text')
+                .data(["Less associated with your area","More associated with your area"])
+                .enter()
+                .append("text")
+                .attr('id','legend')
+                .style("fill","white")
+                .text(function(d,i){return d})
+                .attr("x",width-60)
+                .attr("y",function(d,i){{return (height/3)+40*4*i+25;}})
+                .style("text-anchor","end")
+                .style('font-family',"sans-serif")
+                .style('font-size','small');
+        }
+        else{
+            legend.selectAll("rect")
+                .data([1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000])
+                .enter()
+                .append("rect")
+                .attr('id','legend')
+                .attr("height",40)
+                .attr("width",40)
+                .attr("x",width-50)
+                .attr("y",function(d,i){{return (height/3)+40*i;}})
+                .style("fill",function(d){return color(d-0.01);})
+                .style("stroke",'white')
+            legend.selectAll('text')
+                .data([1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000])
+                .enter()
+                .append("text")
+                .attr('id','legend')
+                .style("fill","white")
+                .text(function(d,i){
+                    if (i==7){
+                        return "≤ "+format_money(d);
+                    }
+                    else {
+                        return "≤ "+format_money(d);
+                    }
+                })
+                .attr("x",width-60)
+                .attr("y",function(d,i){{return (height/3)+40*i+25;}})
+                .style("text-anchor","end")
+                .style('font-family',"sans-serif")
+                .style('font-size','small');
+        }
+        var zipPaths = g.selectAll(".zip")
+            .data(v)
+            .enter().append('path')
+            .attr('class', 'zip')
+            .attr('d',path)
+            .style('stroke-width',"0px")
+            .style('fill', function (d) {
+                if (DIRECTION=="OUT"){
+                    return PREDICT?color_pred(d.properties.grant_sum_out):color(d.properties.grant_sum_out)
+                }
+                else return PREDICT?color_pred(d.properties.grant_sum_out):color(d.properties.grant_sum_in)
+            });
+        zipPaths.transition(d3.transition().duration(800))
+            .attr('d', path) 
+        zipPaths.raise()
+        zipPaths.on('mouseover',tt_money.show)
+            .on('mouseout',tt_money.hide)
+        zipPaths.call(tt_money);
+        tt.hide()
+    } 
+    else{ //VIEW=="graph"
+        document.body.classList.remove('waiting');
+        document.getElementById('radio3').disabled = false;
+        document.getElementById('radio4').disabled = false;
+        document.getElementById("flip_flow").disabled = true;
+        svg.selectAll('g') 
+            .remove() 
+        g=svg.append('g')
+        flow_zips=flow_global.filter(function(f){
+            return active_zips.includes(f.zip_out)||active_zips.includes(f.zip_in)
+        })
+        nodes_temp={}
+        for (let zip of x.concat(y)){
+            c=zip_cluster_global.filter(function(z){
+                    return z.zip==zip.properties.zip
+                })||{}
+            c=c[0]||{}
+            nodes_temp[zip.properties.zip]={
+                'name':zip.properties.name,
+                'state':zip.properties.state,
+                'zip':zip.properties.zip,
+                'cluster':c.cluster||undefined
+            }
+        }
+        links=[] //initiate links as an empty list
+        for (f of flow_zips){ //for every flow in which an active_zip is a party
+            n_out=nodes_temp[f.zip_out]||{name:f.zip_out, state:"NA"} 
+            n_in=nodes_temp[f.zip_in]||{name:f.zip_in, state:"NA"}
+            links.push({ //give the links array the name of its zip
+                source:n_out.name+", "+state_names[n_out.state],
+                target:n_in.name+", "+state_names[n_in.state],
+                flow:f.grant_sum,
+                cluster_src:n_out.cluster,
+                cluster_tgt:n_in.cluster
+            })
+        }
+        links_reduced=[];
+        links.reduce(function(r, v) { //thanks to https://stackoverflow.com/questions/29364262/how-to-group-by-and-sum-array-of-object
+            id=v.source+":"+v.target
+            if (!r[id]) {
+                r[id] = { sourcetarget:id, flow: 0 };
+                links_reduced.push(r[id])
+            }
+            r[id].flow += v.flow;
+            r[id].source=v.source;
+            r[id].target=v.target;
+            r[id].cluster_src1=0
+            r[id].cluster_src2=0
+            r[id].cluster_src3=0
+            r[id].cluster_tgt1=0
+            r[id].cluster_tgt2=0
+            r[id].cluster_tgt3=0
+            r[id].cluster_src1+=v.cluster_src==1;
+            r[id].cluster_src2+=v.cluster_src==2;
+            r[id].cluster_src3+=v.cluster_src==3;
+            r[id].cluster_tgt1+=v.cluster_tgt==1;
+            r[id].cluster_tgt2+=v.cluster_tgt==2;
+            r[id].cluster_tgt3+=v.cluster_tgt==3;
+            delete r[id].sourcetarget;
+            return r;
+        })
+        links_reduced.forEach(function(link){ //for all cities, use the modal cluster among zip codes
+            cluster_src=[link.cluster_src1,link.cluster_src2,link.cluster_src3]
+            link.cluster_src=cluster_src.indexOf((Math.max(...cluster_src)))+1
+            cluster_tgt=[link.cluster_tgt1,link.cluster_tgt2,link.cluster_tgt3]
+            link.cluster_tgt=cluster_tgt.indexOf((Math.max(...cluster_tgt)))+1
+            
+            delete link.cluster_src1
+            delete link.cluster_src2
+            delete link.cluster_src3
+            delete link.cluster_tgt1
+            delete link.cluster_tgt2
+            delete link.cluster_tgt3
+            
+        }) 
+        for (zip of active_zips){
+            node_zip=nodes_temp[zip]||{}
+            active_cities.push((node_zip.name+", "+state_names[node_zip.state])||zip)
+        }
+        nodes={}
+        links_reduced.forEach(function(link){
+            reverse_link=links_reduced.filter(function(f){
+                return f.source==link.target&f.target==link.source;
+            })[0]||{}
+            link.source=nodes[link.source] || (nodes[link.source]={
+                name:link.source,
+                flow_in:0,
+                flow_out:0,
+                cluster:link.cluster_src
+            });
+            link.target=nodes[link.target] || (nodes[link.target]={
+                name:link.target,
+                flow_in:0,
+                flow_out:0,
+                cluster:link.cluster_tgt
+            });
+        })
+        for (i in links_reduced){
+            if(links_reduced.filter(function(l){
+                return l.source.name==links_reduced[i].target.name&l.target.name==links_reduced[i].source.name
+            }).length>0 & links_reduced[i].source.name!=links_reduced[i].target.name){
+                links_reduced[i].flow=links_reduced[i].flow/2
+            }
+        }
+        //links_reduced=links_reduced.filter(function(f){return true;})
+        
+        for (link of links_reduced){
+            reverse_link=links_reduced.filter(function(f){
+                return f.source.name==link.target.name&f.target.name==link.source.name;
+            })[0]||{source:{name:""},target:{name:""},flow:0}
+            if (reverse_link==link) {
+                reverse_link={source:{name:""},target:{name:""},flow:0}
+            }
+            console.log(link)
+            nodes[link.source.name].flow_out+=active_cities.includes(link.target.name)?link.flow:0
+            nodes[link.source.name].flow_in+=active_cities.includes(reverse_link.source.name)?reverse_link.flow:0
+            nodes[link.target.name].flow_in+=active_cities.includes(link.source.name)?link.flow:0
+            nodes[link.target.name].flow_out+=active_cities.includes(reverse_link.target.name)?reverse_link.flow:0
+        }
+        var force = d3.forceSimulation()
+            .nodes(d3.values(nodes)) //...because d3.values() throws indices that start with zero to the end, not the beginning. i'm going to go beat my head against a wall.
+            .force("link", d3.forceLink(links_reduced).distance(200))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("x", d3.forceX(width / 2))
+            .force("y", d3.forceY(height / 2))
+            .force("charge", d3.forceManyBody().strength(-750))
+            //.alphaTarget(1)
+            .on("tick", tick);
+        
+        var linkpath = g.selectAll("path")
+            .data(links_reduced)
+            .enter()
+            .append("path")
+            .style("stroke","white")
+            .style("stroke-width","1.5px")
+            .style("fill","none")
+
+        var node = g.selectAll(".node")
+            .data(force.nodes())
+            .enter().append("g")
+            .attr("class", "node")
+            .on('mouseover',tt_money_flow.show)
+            .on('mouseout',tt_money_flow.hide)
+            
+        node.call(tt_money_flow)
+
+        if (GRAPH_COLOR_SCHEME=="clusters"){
+            node.append("circle")
+                .style('stroke',function(d){return active_cities.includes(d.name)?['yellowgreen','gold','tomato'][d.cluster]:'slategray'})
+                .style("stroke-width","1.5px")
+                .style("fill",function(d){if (d.cluster==undefined) return "black"; else if (active_cities.includes(d.name)) return "white"; else return ['yellowgreen','gold','tomato'][d.cluster]})
+                .attr("r",function(d){
+                    if (PREDICT){
+                        return d.flow_out
+                    }
+                    else return Math.pow(node_scale(d.flow_in+d.flow_out),1.1)
+                })
+        }
+        else{
+            node.append("circle")
+                .style('stroke','slategray')
+                .style("stroke-width","1.5px")
+                .style("fill",function(d){return (active_cities.includes(d.name)?"white":(PREDICT?d.flow_out:(d.flow_in-d.flow_out))>=0?"indianred":"forestgreen")})
+                .attr("r",function(d){
+                    if (PREDICT){
+                        return d.flow_out
+                    }
+                    else return Math.pow(node_scale(d.flow_in+d.flow_out),1.1)
+                })
+        }
+
+        function tick() { //http://bl.ocks.org/d3noob/5141278
+            linkpath.attr("d", function(d) {
+                var dx = d.target.x - d.source.x,
+                    dy = d.target.y - d.source.y,
+                    dr = Math.sqrt(dx * dx + dy * dy);
+                return "M" + 
+                    d.source.x + "," + 
+                    d.source.y + "A" + 
+                    dr + "," + dr + " 0 0,1 " + 
+                    d.target.x + "," + 
+                    d.target.y;
+            });
+
+            node
+                .attr("transform", function(d) {
+                return "translate(" + d.x + "," + d.y + ")"; })
+        };
+                        
+        svg.call(d3.zoom() //needs to be svg.call (not g.call) because it'll be shaky otherwise... thanks to https://stackoverflow.com/questions/10988445/d3-behavior-zoom-jitters-shakes-jumps-and-bounces-when-dragging
+            .scaleExtent([-3,10])
+            .on("zoom",function(){
+                g.attr("transform", d3.event.transform)
+                    .attr("cx", document.body.clientWidth / 2)
+                    .attr("cy", document.body.clientHeight / 2)
+        }))
+        legend=svg.append('g')
+        if (GRAPH_COLOR_SCHEME=="clusters"){
+            legend.selectAll("circle")
+                .data(['Low','Moderate','High','Selected City'])
+                .enter()
+                .append("circle")
+                .attr('id','legend')
+                .attr("r",10)
+                .attr("cx",width-50)
+                .attr("cy",function(d,i){{return (height/3)+30*i;}})
+                .style("fill",function(d,i){return ['yellowgreen','gold','tomato','white'][i];})
+                .style("stroke",'slategray')
+            legend.selectAll('text')
+                .data(['General economic activity class','Low','Moderate','High','Selected City'])
+                .enter()
+                .append("text")
+                .attr('id','legend')
+                .style("fill","white")
+                .text(function(d){return d})
+                .attr("x",function(d,i){return width-70+(25*(i==0))})
+                .attr("y",function(d,i){{return (height/3)+30*(i-1)+7;}})
+                .style("text-anchor","end")
+                .style('font-family',"sans-serif")
+                .style('font-size','small')
+                .style('font-weight',function(d,i){if (i==0) return 'bold'; else return 'normal'});
+        }
+        else{
+            legend.selectAll("circle")
+                .data(['Net giver','Net recipient'])
+                .enter()
+                .append("circle")
+                .attr('id','legend')
+                .attr("r",10)
+                .attr("cx",width-50)
+                .attr("cy",function(d,i){{return (height/3)+30*i;}})
+                .style("fill",function(d,i){return ['forestgreen','indianred'][i];})
+                .style("stroke",'slategray')
+            legend.selectAll('text')
+                .data(['Net flow direction','Net giver','Net recipient'])
+                .enter()
+                .append("text")
+                .attr('id','legend')
+                .style("fill","white")
+                .text(function(d){return d})
+                .attr("x",function(d,i){return width-70+(25*(i==0))})
+                .attr("y",function(d,i){{return (height/3)+30*(i-1)+7;}})
+                .style("text-anchor","end")
+                .style('font-family',"sans-serif")
+                .style('font-size','small')
+                .style('font-weight',function(d,i){if (i==0) return 'bold'; else return 'normal'});
+        }
+    } 
+}
+function setPredict(v){
+    PREDICT=(v=="true");
+    var promise = new Promise(function(resolve,reject){
+        if (VIEW=="map"){
+            g.selectAll('.zip')
+                .remove()
+        }
+        else{ //if VIEW=="graph"
+            g.selectAll('path')
+                .remove()
+            g.selectAll('circle')
+                .remove()
+            g.selectAll('.node')
+                .remove()
+        }
+        resolve("resolved!")
+    })
+    var promise2 = new Promise(function(resolve,reject){
+        x=zips_global.filter(function(f,i){
+            delete f.properties.grant_sum_out
+            return zips_in.includes(f.properties.zip)
+        })
+        y=zips_global.filter(function(f,i){
+            delete f.properties.grant_sum_in
+            return zips_out.includes(f.properties.zip)
+        })
+        resolve("resolved!")
+    })
+    promise
+        .then(ready.sum_grants("all",2016,PREDICT))
+        .then(promise2)
+        .then(updateData(x))
+}
+function filter_flow_group(v){
+    GROUP=v;
+    var promise = new Promise(function(resolve,reject){
+        if (VIEW=="map"){
+            g.selectAll('.zip')
+                .remove()
+        }
+        else{ //if VIEW=="graph"
+            g.selectAll('path')
+                .remove()
+            g.selectAll('circle')
+                .remove()
+            g.selectAll('.node')
+                .remove()
+        }
+        resolve("resolved!")
+    })
+    var promise2 = new Promise(function(resolve,reject){
+        x=zips_global.filter(function(f,i){
+            delete f.properties.grant_sum_out
+            return zips_in.includes(f.properties.zip)
+        })
+        y=zips_global.filter(function(f,i){
+            delete f.properties.grant_sum_in
+            return zips_out.includes(f.properties.zip)
+        })
+        resolve("resolved!")
+    })
+    promise
+        .then(ready.sum_grants(v,YEAR,PREDICT))
+        .then(promise2)
+        .then(updateData(DIRECTION=="OUT"?x:y))
+}
+function filter_flow_year(v){
+    YEAR=v;
+    var promise = new Promise(function(resolve,reject){
+        if (VIEW=="map"){
+            g.selectAll('.zip')
+                .remove()
+        }
+        else{ //if VIEW=="graph"
+            g.selectAll('path')
+                .remove()
+            g.selectAll('circle')
+                .remove()
+            g.selectAll('.node')
+                .remove()
+        }
+        resolve("resolved!")
+    })
+    var promise2 = new Promise(function(resolve,reject){
+        x=zips_global.filter(function(f,i){
+            delete f.properties.grant_sum_out
+            return zips_in.includes(f.properties.zip)
+        })
+        y=zips_global.filter(function(f,i){
+            delete f.properties.grant_sum_in
+            return zips_out.includes(f.properties.zip)
+        })
+        resolve("resolved!")
+    })
+    promise
+        .then(ready.sum_grants(GROUP,v,PREDICT))
+        .then(promise2)
+        .then(updateData(DIRECTION=="OUT"?x:y))
+}
+function flip_flow(dir){
+    if (DIRECTION!=dir){
+        DIRECTION=dir
+        if (dir=="IN"){
+            var promise = new Promise(function(resolve,reject){
+                g.selectAll('.zip')
+                    .remove()
+                resolve("resolved!")
+            })
+            promise.then(updateData(y),updateData(y))
+        }
+        else{
+            updateData(x)
+        }
+    }
+}
+
+//MAP FUNCTIONS
+function ready([states,zips,flows,flows_grouped,zip_cluster,flows_synth]) {
+    all_flows_orig=flows
+    zip_cluster_global=zip_cluster
+    function sum_grants(group=GROUP,year=YEAR,predict=PREDICT){ //sums grants to source and target zip codes based on the user-selected zip codes
+        GROUP=group;
+        YEAR=year;
+        PREDICT=predict;
+        x=[]
+        y=[]
+        zips_in=[]
+        zips_out=[]
+        document.getElementById("cat_filter").disabled = PREDICT;
+        document.getElementById("year_filter").disabled = PREDICT;
+        document.getElementById("flip_flow").disabled = PREDICT;
+        document.getElementById("radio1").disabled = PREDICT;
+        document.getElementById("radio2").disabled = PREDICT;
+        if (PREDICT){
+            flow_data=flows_synth
+        }
+        else{
+            flow_data=(GROUP=="all"? flows.filter(
+                function(f){
+                    return f.year==YEAR
+                }) : flows_grouped.filter(
+                    function(f){
+                        return f.group==GROUP & f.year==YEAR
+                    }
+                )
+            )
+        }
+        flow_global=flow_data
+        return new Promise(function(resolve,reject){
+            document.body.classList.add('waiting'); 
+            for (let z_out of zips){
+                z_out_zip=z_out.properties.zip;
+                if (active_zips.includes(z_out_zip)){
+                    flows_temp_out=flow_data.filter(function(f){
+                        return z_out_zip==f.zip_out
+                    })
+                    flows_temp_in=flow_data.filter(function(f){
+                        return z_out_zip==f.zip_in
+                    })
+                    flow_zips_out=[]
+                    flow_zips_in=[]
+                    for (f of flows_temp_out){
+                        flow_zips_out.push(f.zip_in)
+                    }
+                    for (f of flows_temp_in){
+                        flow_zips_in.push(f.zip_out)
+                    }
+                    for (let z_in of zips){
+                        z_in_zip=z_in.properties.zip
+                        if(flow_zips_out.includes(z_in_zip)){
+                            z = flows_temp_out.find(function(ft){
+                                return z_in_zip==ft.zip_in
+                            })
+                            if (z_in.properties.grant_sum_out==null) {
+                                zips_in.push(z_in_zip)
+                                z_in.properties.grant_sum_out=z.grant_sum
+                            }
+                            else {
+                                z_in.properties.grant_sum_out=(z.grant_sum+z_in.properties.grant_sum_out)
+                            }
+                        }
+                        if(flow_zips_in.includes(z_in_zip)){
+                            z = flows_temp_in.find(function(ft){
+                                return z_in_zip==ft.zip_out
+                            })
+                            if (z_in.properties.grant_sum_in==null) {
+                                zips_out.push(z_in_zip)
+                                z_in.properties.grant_sum_in=z.grant_sum
+                            }
+                            else {
+                                z_in.properties.grant_sum_in=(z.grant_sum+z_in.properties.grant_sum_in)
+                            }
+                        }
+                    }
+                }
+            }
+            x=zips.filter(function(f,i){
+                    return zips_in.includes(f.properties.zip)
+                })
+            y=zips.filter(function(f,i){
+                return zips_out.includes(f.properties.zip)
+            })
+            zips_global=zips
+            resolve();
+        })
+    } 
+    ready.sum_grants=sum_grants
+    ready.usZoom=usZoom;
+    var states = topojson.feature(states, states.objects.states).features
+    var zips = topojson.feature(zips, zips.objects.zip_codes_for_the_usa).features
+
+    var statePaths = g.selectAll('.state')
+        .data(states)
+        .enter().append('path')
+        .attr('class', 'state')
+        .attr('d', path)
+        .on('click', function (d) {stateZoom(d.id); })
+    states_global=states
+
+    function usZoom() {
+        document.getElementById("show_money").disabled = false;
+        document.getElementById("cat_filter").disabled = false;
+        document.getElementById("year_filter").disabled = false;
+        document.getElementById("flip_flow").disabled = false;
+        document.getElementById("radio1").disabled = false;
+        document.getElementById("radio2").disabled = false;
+        //document.getElementById("year_filter").disabled = false;
+        var promise = sum_grants()
+        promise.then(function(result){
+            zoomed=false;
+            var t = d3.transition().duration(800)
+            projection.scale(height * 2).translate([width / 2, height / 2])
+            g.selectAll('.zip')
+                .style('stroke-width',0)
+                .data([])
+                .exit().transition(t)
+                .attr('d', path)
+                .style('opacity', 0)
+                .remove()
+            
+            statePaths.transition(t)
+                .attr('d',path)
+            /*
+            x=zips.filter(function(f,i){
+                return zips_in.includes(f.properties.zip)
+            })
+            y=zips.filter(function(f,i){
+                return zips_out.includes(f.properties.zip)
+            })*/
+            tt.hide()
+            var zipPaths = g.selectAll('.zip')
+                .on('mouseover',null)
+                .on('mouseout',null);
+            document.body.classList.remove('waiting');
+            
+            g.selectAll('.state')
+                .on('click',null)
+            g.on('mousedown',null)
+                .on('mouseup',null)
+            svg.call(d3.zoom() //needs to be svg.call (not g.call) because it'll be shaky otherwise... thanks to https://stackoverflow.com/questions/10988445/d3-behavior-zoom-jitters-shakes-jumps-and-bounces-when-dragging
+                .scaleExtent([1,10])
+                .on("zoom",function(){
+                    g.attr("transform", d3.event.transform)
+                        .attr("cx", document.body.clientWidth / 2)
+                        .attr("cy", document.body.clientHeight / 2)
+                }))
+        })
+    }
+    function stateZoom(id) {
+        zoomed=false;
+        g.on("mousedown",null)
+        g.on("mousemove",null)
+        g.on("mouseup",null)
+        var state = states.find(function (d) { return d.id === id })
+        var stateZips = zips.filter(function (d,i) {
+            return d.properties.state == id/1000;
+        })
+        var t = d3.transition().duration(800)
+        var zipPaths = g.selectAll('.zip')
+            .data(stateZips, function (d) { return d.id })
+        var enterZipPaths = zipPaths.enter().append('path')
+            .data(stateZips)
+            .attr('class', 'zip')
+            .attr('d', path)
+            .style('opacity', 0)
+            .style('fill', function(d){
+                return active_zips.includes(d.properties.zip) ? "indianred":"slategray";
+            })
+            .on('click', function (d) { localZoom(d); })
+        
+        g.on('dblclick', function() {
+            var promise = new Promise(function(resolve,reject){
+                document.body.classList.add('waiting')
+                setTimeout(function(){resolve()},10)      
+            })
+            promise.then(function(result){usZoom()})
+        })
+        projection.fitExtent(
+            [[padding, padding], [width - padding, height - padding]],
+            state
+        )
+        statePaths.transition(t)
+            .attr('d', path)
+            .style('fill', '#444')
+        enterZipPaths.transition(t)
+            .attr('d', path)
+            .style('opacity', 1)
+        zipPaths.exit().transition(t)
+            .attr('d', path)
+            .style('opacity', 0)
+            .remove()
+    }
+    function localZoom(dz) {
+        g.selectAll("#select_rect").remove();
+        var id=dz.properties.zip;
+        var stateZips = zips.filter(function (d,i) {
+            return d.properties.state == dz.properties.state;
+        })
+        var t = d3.transition().duration(800)
+        var zip = zips.find(function (d) { return d.properties.zip === id; })
+        
+        projection.scale(zoomed ? projection.scale() : projection.scale()*3);
+        zoomed=true;
+        var centroid=path.centroid(dz);
+        var x_center=centroid[0];
+        var y_center=centroid[1];
+        if (width-x_center<100||x_center<100||height-y_center<100||y_center<100){
+            translate = projection.translate();
+            projection.translate([
+                translate[0] - centroid[0] + width / 2,
+                translate[1] - centroid[1] + height / 2
+            ]);
+        }
+        g.selectAll('.zip').style('fill',function(d){
+            if (d.properties.zip==id) {
+                if (!active_zips.includes(d.properties.zip)) active_zips.push(d.properties.zip);
+                else active_zips=active_zips.filter(function(element){
+                    return element!=d.properties.zip
+                });
+            }
+            return active_zips.includes(d.properties.zip) ? "indianred":"slategray";
+        })
+        //svg.on("dblclick",stateZoom(dz.properties.state*1000))
+        var rect_src=[];
+        g.on("mousedown",function(){
+            var c = d3.mouse(this)
+            rect_src=c;
+            g.append("rect")
+                .attr("id","select_rect")
+                .attr("x",c[0])
+                .attr("y",c[1])
+                .attr("width",0)
+                .attr("height",0)
+                .attr("fill","indianred")
+                .attr("opacity",0.5)
+        });
+        g.on("mousemove",function(){
+            var c = d3.mouse(this)
+            select_rect=g.select("#select_rect")
+            if (c[0]<rect_src[0]){
+                select_rect.attr("x",c[0])
+            }
+            if (c[1]<rect_src[1]){
+                select_rect.attr("y",c[1])
+            }
+            select_rect.attr("width",Math.abs(c[0]-rect_src[0]))
+            select_rect.attr("height",Math.abs(c[1]-rect_src[1]))
+            tt.style("left", (c[0] +20) + "px");
+            tt.style("top", (c[1] -20) + "px");
+        })
+        g.on("mouseup",function(){
+            var sr_top_left = [Math.min(d3.mouse(this)[0],rect_src[0]),Math.min(d3.mouse(this)[1],rect_src[1])]
+            var sr_bottom_right = [Math.max(d3.mouse(this)[0],rect_src[0]),Math.max(d3.mouse(this)[1],rect_src[1])]
+            stateZips.forEach(function (f){
+                fcent = path.centroid(f)
+                if (sr_top_left[0]<fcent[0] && fcent[0]<sr_bottom_right[0] && sr_top_left[1]<fcent[1] && fcent[1]<sr_bottom_right[1]){
+                    active_zips.push(f.properties.zip)
+                }
+            })
+            active_zips=Array.from(new Set(active_zips)) //deduplicate active_zips
+            g.selectAll('.zip').style('fill', function(d){
+                return active_zips.includes(d.properties.zip) ? "indianred":"slategray";
+            })
+            g.selectAll("#select_rect").remove();
+        });
+        
+        var zipPaths = g.selectAll('.zip')
+            .on('mouseover',tt.show)
+            .on('mouseout',tt.hide);
+        zipPaths.call(tt);
+        zipPaths.transition(t)
+            .attr('d', path);
+    }
+}
+</script>
+</body>
